@@ -27,7 +27,8 @@ const progressFill =
 const progressPercent =
     document.getElementById("progressPercent");
 
-const result = document.getElementById("result");
+const result =
+    document.getElementById("result");
 
 const originalSize =
     document.getElementById("originalSize");
@@ -50,7 +51,21 @@ const resetButton =
 // ========================================
 
 let selectedFile = null;
-let fakeProgressTimer = null;
+let compressedBlob = null;
+let downloadUrl = null;
+let compressionRunning = false;
+
+
+// ========================================
+// Supported Formats
+// ========================================
+
+const SUPPORTED_IMAGE_TYPES = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp"
+];
 
 
 // ========================================
@@ -82,6 +97,10 @@ dropZone.addEventListener("dragover", (event) => {
 
     event.preventDefault();
 
+    if (compressionRunning) {
+        return;
+    }
+
     dropZone.classList.add("drag-over");
 });
 
@@ -97,6 +116,10 @@ dropZone.addEventListener("drop", (event) => {
     event.preventDefault();
 
     dropZone.classList.remove("drag-over");
+
+    if (compressionRunning) {
+        return;
+    }
 
     const files = event.dataTransfer.files;
 
@@ -115,6 +138,9 @@ dropZone.addEventListener("drop", (event) => {
 function handleFile(file) {
 
     selectedFile = file;
+    compressedBlob = null;
+
+    cleanupDownloadUrl();
 
     fileName.textContent = file.name;
 
@@ -122,16 +148,15 @@ function handleFile(file) {
         `${formatBytes(file.size)} • ${getFileType(file)}`;
 
     fileInfo.hidden = false;
-
     settings.hidden = false;
-
     result.hidden = true;
-
     progressSection.hidden = true;
 
     targetSize.value = "";
 
     hideError();
+
+    updateInputHint();
 
     validateTargetSize();
 }
@@ -164,17 +189,38 @@ sizeUnit.addEventListener("change", () => {
 
 
 // ========================================
+// Update Input Hint
+// ========================================
+
+function updateInputHint() {
+
+    if (!selectedFile) {
+        return;
+    }
+
+    const size =
+        formatBytes(selectedFile.size);
+
+    inputHint.textContent =
+        `Original file size: ${size}`;
+}
+
+
+// ========================================
 // Validate Target Size
 // ========================================
 
 function validateTargetSize() {
 
     if (!selectedFile) {
+
         compressButton.disabled = true;
+
         return;
     }
 
-    const value = Number(targetSize.value);
+    const value =
+        Number(targetSize.value);
 
     if (!value || value <= 0) {
 
@@ -186,12 +232,26 @@ function validateTargetSize() {
     }
 
     const targetBytes =
-        convertToBytes(value, sizeUnit.value);
+        convertToBytes(
+            value,
+            sizeUnit.value
+        );
 
     if (targetBytes >= selectedFile.size) {
 
         showError(
             "The target size must be smaller than the original file."
+        );
+
+        compressButton.disabled = true;
+
+        return;
+    }
+
+    if (!SUPPORTED_IMAGE_TYPES.includes(selectedFile.type)) {
+
+        showError(
+            "This first version only supports JPG, PNG, and WebP images."
         );
 
         compressButton.disabled = true;
@@ -209,118 +269,389 @@ function validateTargetSize() {
 // Compress Button
 // ========================================
 
-compressButton.addEventListener("click", () => {
+compressButton.addEventListener("click", async () => {
 
-    if (!selectedFile) {
+    if (!selectedFile || compressionRunning) {
         return;
     }
 
-    startCompression();
+    await compressImage();
 });
 
 
 // ========================================
-// Temporary Compression Simulation
+// Real Image Compression
 // ========================================
 
-function startCompression() {
+async function compressImage() {
+
+    compressionRunning = true;
 
     compressButton.disabled = true;
 
-    compressButtonText.textContent = "Compressing...";
+    compressButtonText.textContent =
+        "Compressing...";
 
     progressSection.hidden = false;
-
     result.hidden = true;
 
-    let progress = 0;
+    setProgress(0);
 
-    progressFill.style.width = "0%";
-    progressPercent.textContent = "0%";
+    try {
 
-    clearInterval(fakeProgressTimer);
+        const targetBytes =
+            convertToBytes(
+                Number(targetSize.value),
+                sizeUnit.value
+            );
 
-    fakeProgressTimer = setInterval(() => {
+        /*
+            Load the image into an Image element.
+        */
 
-        progress += Math.random() * 8;
+        setProgress(10);
 
-        if (progress >= 100) {
+        const image =
+            await loadImage(selectedFile);
 
-            progress = 100;
+        setProgress(20);
 
-            clearInterval(fakeProgressTimer);
+        /*
+            Find the best quality that produces
+            an image below the requested size.
+        */
 
-            finishFakeCompression();
+        const blob =
+            await findBestCompression(
+                image,
+                targetBytes
+            );
 
-        }
+        setProgress(100);
 
-        progressFill.style.width = `${progress}%`;
+        compressedBlob = blob;
 
-        progressPercent.textContent =
-            `${Math.round(progress)}%`;
+        showCompressionResult(
+            selectedFile,
+            compressedBlob
+        );
 
-    }, 150);
+    } catch (error) {
+
+        console.error(error);
+
+        showError(
+            error.message ||
+            "Something went wrong while compressing the image."
+        );
+
+        progressSection.hidden = true;
+
+    } finally {
+
+        compressionRunning = false;
+
+        compressButton.disabled = false;
+
+        compressButtonText.textContent =
+            "Compress File";
+    }
 }
 
 
 // ========================================
-// Temporary Result
+// Find Best Compression
 // ========================================
 
-function finishFakeCompression() {
+async function findBestCompression(
+    image,
+    targetBytes
+) {
 
     /*
-        THIS IS NOT REAL COMPRESSION YET.
+        Start with the highest quality.
 
-        For now we're pretending that the
-        compression produced the target size.
-
-        We'll replace this entire section with
-        the actual compression system later.
+        Then progressively lower it until
+        the output fits under the target.
     */
 
-    const targetBytes =
-        convertToBytes(
-            Number(targetSize.value),
-            sizeUnit.value
+    let minimumQuality = 0.05;
+    let maximumQuality = 0.95;
+
+    let bestBlob = null;
+
+    /*
+        We use binary search to find the
+        highest quality that fits the target.
+    */
+
+    for (let iteration = 0; iteration < 8; iteration++) {
+
+        const quality =
+            (minimumQuality + maximumQuality) / 2;
+
+        const blob =
+            await canvasToBlob(
+                image,
+                quality
+            );
+
+        const progress =
+            20 + ((iteration + 1) / 8) * 65;
+
+        setProgress(progress);
+
+        if (blob.size <= targetBytes) {
+
+            /*
+                This works.
+
+                Save it and try a higher quality.
+            */
+
+            bestBlob = blob;
+
+            minimumQuality = quality;
+
+        } else {
+
+            /*
+                Still too large.
+
+                Lower the quality.
+            */
+
+            maximumQuality = quality;
+        }
+    }
+
+    /*
+        If we never managed to get under
+        the requested size, the target is
+        probably too aggressive for this image.
+    */
+
+    if (!bestBlob) {
+
+        const lowestQualityBlob =
+            await canvasToBlob(
+                image,
+                minimumQuality
+            );
+
+        if (lowestQualityBlob.size > targetBytes) {
+
+            throw new Error(
+                `This image cannot be compressed below ${formatBytes(targetBytes)} at the current resolution.`
+            );
+        }
+
+        bestBlob = lowestQualityBlob;
+    }
+
+    return bestBlob;
+}
+
+
+// ========================================
+// Canvas Compression
+// ========================================
+
+function canvasToBlob(image, quality) {
+
+    return new Promise((resolve, reject) => {
+
+        const canvas =
+            document.createElement("canvas");
+
+        canvas.width =
+            image.naturalWidth;
+
+        canvas.height =
+            image.naturalHeight;
+
+        const context =
+            canvas.getContext("2d");
+
+        if (!context) {
+
+            reject(
+                new Error(
+                    "Your browser does not support canvas rendering."
+                )
+            );
+
+            return;
+        }
+
+        /*
+            Draw the original image onto
+            the canvas.
+        */
+
+        context.drawImage(
+            image,
+            0,
+            0
         );
 
+        /*
+            JPEG gives us predictable quality
+            control.
+
+            This means PNG/WebP input will
+            currently become JPEG output.
+        */
+
+        canvas.toBlob(
+            (blob) => {
+
+                if (!blob) {
+
+                    reject(
+                        new Error(
+                            "The browser failed to create the compressed image."
+                        )
+                    );
+
+                    return;
+                }
+
+                resolve(blob);
+            },
+            "image/jpeg",
+            quality
+        );
+    });
+}
+
+
+// ========================================
+// Load Image
+// ========================================
+
+function loadImage(file) {
+
+    return new Promise((resolve, reject) => {
+
+        const url =
+            URL.createObjectURL(file);
+
+        const image =
+            new Image();
+
+        image.onload = () => {
+
+            URL.revokeObjectURL(url);
+
+            resolve(image);
+        };
+
+        image.onerror = () => {
+
+            URL.revokeObjectURL(url);
+
+            reject(
+                new Error(
+                    "The selected image could not be loaded."
+                )
+            );
+        };
+
+        image.src = url;
+    });
+}
+
+
+// ========================================
+// Display Result
+// ========================================
+
+function showCompressionResult(
+    originalFile,
+    compressedFile
+) {
+
     originalSize.textContent =
-        formatBytes(selectedFile.size);
+        formatBytes(originalFile.size);
 
     compressedSize.textContent =
-        formatBytes(targetBytes);
+        formatBytes(compressedFile.size);
 
     const saved =
-        1 - (targetBytes / selectedFile.size);
+        1 -
+        (compressedFile.size / originalFile.size);
 
     savedPercent.textContent =
-        `${Math.round(saved * 100)}%`;
+        `${Math.max(0, Math.round(saved * 100))}%`;
 
-    /*
-        For now the download button simply
-        downloads the original file.
+    cleanupDownloadUrl();
 
-        This will be replaced with the actual
-        compressed Blob later.
-    */
+    downloadUrl =
+        URL.createObjectURL(
+            compressedFile
+        );
 
-    const downloadUrl =
-        URL.createObjectURL(selectedFile);
-
-    downloadButton.href = downloadUrl;
+    downloadButton.href =
+        downloadUrl;
 
     downloadButton.download =
-        `compressed-${selectedFile.name}`;
+        createCompressedFilename(
+            originalFile.name
+        );
 
     progressSection.hidden = true;
 
     result.hidden = false;
+}
 
-    compressButtonText.textContent =
-        "Compress File";
 
-    compressButton.disabled = false;
+// ========================================
+// Create Output Filename
+// ========================================
+
+function createCompressedFilename(filename) {
+
+    const lastDot =
+        filename.lastIndexOf(".");
+
+    if (lastDot === -1) {
+
+        return `${filename}-compressed.jpg`;
+    }
+
+    const name =
+        filename.substring(
+            0,
+            lastDot
+        );
+
+    return `${name}-compressed.jpg`;
+}
+
+
+// ========================================
+// Progress
+// ========================================
+
+function setProgress(value) {
+
+    const rounded =
+        Math.round(
+            Math.max(
+                0,
+                Math.min(
+                    100,
+                    value
+                )
+            )
+        );
+
+    progressFill.style.width =
+        `${rounded}%`;
+
+    progressPercent.textContent =
+        `${rounded}%`;
 }
 
 
@@ -336,9 +667,13 @@ resetButton.addEventListener("click", () => {
 
 function resetTool() {
 
-    clearInterval(fakeProgressTimer);
+    compressionRunning = false;
 
     selectedFile = null;
+
+    compressedBlob = null;
+
+    cleanupDownloadUrl();
 
     fileInput.value = "";
 
@@ -366,30 +701,54 @@ function resetTool() {
 
 
 // ========================================
+// Download URL Cleanup
+// ========================================
+
+function cleanupDownloadUrl() {
+
+    if (downloadUrl) {
+
+        URL.revokeObjectURL(
+            downloadUrl
+        );
+
+        downloadUrl = null;
+    }
+}
+
+
+// ========================================
 // Error Handling
 // ========================================
 
 function showError(message) {
 
-    errorMessage.textContent = message;
+    errorMessage.textContent =
+        message;
 
-    errorMessage.hidden = false;
+    errorMessage.hidden =
+        false;
 }
 
 
 function hideError() {
 
-    errorMessage.textContent = "";
+    errorMessage.textContent =
+        "";
 
-    errorMessage.hidden = true;
+    errorMessage.hidden =
+        true;
 }
 
 
 // ========================================
-// Utility Functions
+// Utilities
 // ========================================
 
-function convertToBytes(value, unit) {
+function convertToBytes(
+    value,
+    unit
+) {
 
     switch (unit) {
 
@@ -424,13 +783,20 @@ function formatBytes(bytes) {
 
     const exponent =
         Math.floor(
-            Math.log(bytes) / Math.log(1024)
+            Math.log(bytes) /
+            Math.log(1024)
         );
 
     const size =
-        bytes / Math.pow(1024, exponent);
+        bytes /
+        Math.pow(
+            1024,
+            exponent
+        );
 
-    return `${size.toFixed(exponent === 0 ? 0 : 2)} ${units[exponent]}`;
+    return `${size.toFixed(
+        exponent === 0 ? 0 : 2
+    )} ${units[exponent]}`;
 }
 
 
@@ -444,7 +810,10 @@ function getFileType(file) {
         file.name.split(".");
 
     if (parts.length > 1) {
-        return parts.pop().toUpperCase();
+
+        return parts
+            .pop()
+            .toUpperCase();
     }
 
     return "Unknown type";
