@@ -1,0 +1,255 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FileShrink</title>
+    <meta
+        name="description"
+        content="Compress your files directly in your browser."
+    >
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <main class="container">
+
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">↓</div>
+                <span>FileShrink</span>
+            </div>
+
+            <p class="tagline">
+                Compress files directly in your browser.
+            </p>
+        </header>
+
+
+        <!-- Main Card -->
+        <section class="compressor-card">
+
+            <!-- Upload Area -->
+            <div
+                class="drop-zone"
+                id="dropZone"
+            >
+                <div class="upload-icon">
+                    ↑
+                </div>
+
+                <h1>Drop your file here</h1>
+
+                <p>
+                    or click to browse your files
+                </p>
+
+                <span class="file-limit">
+                    Your file stays on your device.
+                </span>
+
+                <input
+                    type="file"
+                    id="fileInput"
+                    hidden
+                >
+            </div>
+
+
+            <!-- File Information -->
+            <div
+                class="file-info"
+                id="fileInfo"
+                hidden
+            >
+                <div class="file-icon">
+                    📄
+                </div>
+
+                <div class="file-details">
+                    <span
+                        class="file-name"
+                        id="fileName"
+                    >
+                        file.txt
+                    </span>
+
+                    <span
+                        class="file-meta"
+                        id="fileMeta"
+                    >
+                        0 KB
+                    </span>
+                </div>
+
+                <button
+                    class="remove-button"
+                    id="removeButton"
+                    type="button"
+                    aria-label="Remove file"
+                >
+                    ×
+                </button>
+            </div>
+
+
+            <!-- Compression Settings -->
+            <div
+                class="settings"
+                id="settings"
+                hidden
+            >
+
+                <label for="targetSize">
+                    Target size
+                </label>
+
+                <div class="size-input">
+                    <input
+                        type="number"
+                        id="targetSize"
+                        min="1"
+                        step="any"
+                        placeholder="10"
+                    >
+
+                    <select id="sizeUnit">
+                        <option value="KB">KB</option>
+                        <option value="MB" selected>MB</option>
+                        <option value="GB">GB</option>
+                    </select>
+                </div>
+
+                <p
+                    class="input-hint"
+                    id="inputHint"
+                >
+                    Choose the maximum size for your compressed file.
+                </p>
+
+                <p
+                    class="error-message"
+                    id="errorMessage"
+                    hidden
+                >
+                </p>
+
+            </div>
+
+
+            <!-- Compress Button -->
+            <button
+                class="compress-button"
+                id="compressButton"
+                type="button"
+                disabled
+            >
+                <span id="compressButtonText">
+                    Compress File
+                </span>
+            </button>
+
+
+            <!-- Progress -->
+            <div
+                class="progress-section"
+                id="progressSection"
+                hidden
+            >
+                <div class="progress-header">
+                    <span>Compressing...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+
+                <div class="progress-bar">
+                    <div
+                        class="progress-fill"
+                        id="progressFill"
+                    ></div>
+                </div>
+
+                <p>
+                    Your file is being processed locally.
+                </p>
+            </div>
+
+
+            <!-- Result -->
+            <div
+                class="result"
+                id="result"
+                hidden
+            >
+                <div class="success-icon">
+                    ✓
+                </div>
+
+                <h2>Compression complete!</h2>
+
+                <div class="size-comparison">
+
+                    <div>
+                        <span>Original</span>
+                        <strong id="originalSize">
+                            0 MB
+                        </strong>
+                    </div>
+
+                    <div class="arrow">
+                        →
+                    </div>
+
+                    <div>
+                        <span>Compressed</span>
+                        <strong id="compressedSize">
+                            0 MB
+                        </strong>
+                    </div>
+
+                </div>
+
+                <div class="saved-text">
+                    Saved <strong id="savedPercent">0%</strong>
+                </div>
+
+                <a
+                    class="download-button"
+                    id="downloadButton"
+                    href="#"
+                    download
+                >
+                    Download File
+                </a>
+
+                <button
+                    class="reset-button"
+                    id="resetButton"
+                    type="button"
+                >
+                    Compress Another File
+                </button>
+            </div>
+
+        </section>
+
+
+        <!-- Footer -->
+        <footer>
+            <p>
+                Files are processed locally in your browser.
+            </p>
+        </footer>
+
+    </main>
+
+
+    <script src="script.js"></script>
+
+</body>
+</html>
+```
