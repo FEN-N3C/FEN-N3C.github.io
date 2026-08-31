@@ -1,8 +1,3 @@
-```javascript
-// ========================================
-// Elements
-// ========================================
-
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 
@@ -454,4 +449,3 @@ function getFileType(file) {
 
     return "Unknown type";
 }
-```
